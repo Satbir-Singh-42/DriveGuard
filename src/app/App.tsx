@@ -13,8 +13,8 @@ import {
 // ── Download helper ───────────────────────────────────────────────────────────
 function downloadFile(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/plain" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
@@ -128,22 +128,22 @@ function useSEO() {
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   useSEO();
-  const [activeTab, setActiveTab]     = useState<"overview" | "code" | "install">("overview");
-  const [activeFile, setActiveFile]   = useState("driveguard.py");
-  const [copied, setCopied]           = useState(false);
-  const [showFull, setShowFull]       = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "code" | "install">("overview");
+  const [activeFile, setActiveFile] = useState("driveguard.py");
+  const [copied, setCopied] = useState(false);
+  const [showFull, setShowFull] = useState(false);
 
   const files: Record<string, { content: string; lang: string }> = {
-    "driveguard.py":    { content: DRIVEGUARD_PY,    lang: "python"   },
-    "requirements.txt": { content: REQUIREMENTS_TXT, lang: "text"     },
-    "install.bat":      { content: INSTALL_BAT,      lang: "batch"    },
-    "run.bat":          { content: RUN_BAT,          lang: "batch"    },
-    "setup.py":         { content: SETUP_PY,         lang: "python"   },
-    "README.md":        { content: README_MD,        lang: "markdown" },
+    "driveguard.py": { content: DRIVEGUARD_PY, lang: "python" },
+    "requirements.txt": { content: REQUIREMENTS_TXT, lang: "text" },
+    "install.bat": { content: INSTALL_BAT, lang: "batch" },
+    "run.bat": { content: RUN_BAT, lang: "batch" },
+    "setup.py": { content: SETUP_PY, lang: "python" },
+    "README.md": { content: README_MD, lang: "markdown" },
   };
 
   const activeContent = files[activeFile]?.content ?? "";
-  const displayLines  = showFull ? activeContent : activeContent.split("\n").slice(0, 60).join("\n");
+  const displayLines = showFull ? activeContent : activeContent.split("\n").slice(0, 60).join("\n");
 
   function copyCode() {
     navigator.clipboard.writeText(activeContent).then(() => {
@@ -239,12 +239,12 @@ export default function App() {
           </p>
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             {[
-              { icon: <Key size={12} />,      text: "AES-256-GCM Auth Encryption" },
-              { icon: <Cpu size={12} />,       text: "PBKDF2-SHA256 (310k rounds)" },
-              { icon: <Shield size={12} />,    text: "Master-key + Recovery Code" },
+              { icon: <Key size={12} />, text: "AES-256-GCM Auth Encryption" },
+              { icon: <Cpu size={12} />, text: "PBKDF2-SHA256 (310k rounds)" },
+              { icon: <Shield size={12} />, text: "Master-key + Recovery Code" },
               { icon: <HardDrive size={12} />, text: "Streaming Chunked I/O (1 MiB)" },
-              { icon: <Zap size={12} />,       text: "WM_DEVICECHANGE Listener" },
-              { icon: <Lock size={12} />,      text: "Filename Obfuscation + Secure Wipe" },
+              { icon: <Zap size={12} />, text: "WM_DEVICECHANGE Listener" },
+              { icon: <Lock size={12} />, text: "Filename Obfuscation + Secure Wipe" },
             ].map((b, i) => (
               <div key={i} style={{
                 display: "flex", alignItems: "center", gap: "5px",
@@ -315,17 +315,17 @@ export default function App() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginTop: "14px" }}>
               {[
                 { icon: <HardDrive size={16} color="#388bfd" />, title: "Instant Drive Detection", desc: "Native WM_DEVICECHANGE handler reacts in ~150 ms when you plug or eject a drive. 8-second poll as a fallback." },
-                { icon: <Lock size={16} color="#da3633" />,      title: "Streaming Lock/Unlock", desc: "Files are processed in 1 MiB chunks with independent nonces — multi-GB files use constant memory." },
-                { icon: <Key size={16} color="#d29922" />,       title: "Recovery Codes",        desc: "24-character base32 recovery code generated at lock time, shown once with copy/save-to-file. Unwraps the Master Key if you forget the password." },
-                { icon: <Shield size={16} color="#c9b3ff" />,    title: "Filename Obfuscation",  desc: "Optional. Replaces on-disk filenames with random 32-hex stems. The real name is encrypted inside the file header." },
+                { icon: <Lock size={16} color="#da3633" />, title: "Streaming Lock/Unlock", desc: "Files are processed in 1 MiB chunks with independent nonces — multi-GB files use constant memory." },
+                { icon: <Key size={16} color="#d29922" />, title: "Recovery Codes", desc: "24-character base32 recovery code generated at lock time, shown once with copy/save-to-file. Unwraps the Master Key if you forget the password." },
+                { icon: <Shield size={16} color="#c9b3ff" />, title: "Filename Obfuscation", desc: "Optional. Replaces on-disk filenames with random 32-hex stems. The real name is encrypted inside the file header." },
                 { icon: <AlertTriangle size={16} color="#da3633" />, title: "Secure-Wipe Originals", desc: "Optional single-pass random overwrite + fsync before unlinking the plaintext source. Best-effort on flash due to wear-leveling." },
                 { icon: <RefreshCw size={16} color="#3fb950" />, title: "Auto-Lock-on-Eject Alert", desc: "Tracks unlocked drives between refreshes. Toast warning fires if a drive is removed while still unlocked." },
-                { icon: <Key size={16} color="#79c0ff" />,       title: "Change Password",       desc: "Re-wraps the Master Key under a new password without re-encrypting any files. Optional recovery-code rotation." },
-                { icon: <Shield size={16} color="#3fb950" />,    title: "Atomic Writes",         desc: "Every encrypted file and the .drivelock are written to a .tmp + fsync, then os.replace'd — power-loss safe." },
-                { icon: <FileText size={16} color="#c9b3ff" />,  title: "Password Strength Meter", desc: "Live 5-level meter checking length, uppercase, digits, and symbols while you type." },
-                { icon: <Settings size={16} color="#8b949e" />,  title: "Persistent Settings",   desc: "Toggles for filename obfuscation, secure-wipe, auto-lock-on-eject, and toast notifications stored via QSettings." },
-                { icon: <Shield size={16} color="#388bfd" />,    title: "Tray + Toast",          desc: "QSystemTrayIcon with native Windows balloon notifications for lock/unlock/error events. Right-click for Lock-All." },
-                { icon: <Play size={16} color="#3fb950" />,      title: "PyInstaller Export",    desc: "Includes setup.py to build a single standalone DriveGuard.exe with PyInstaller — no Python required on target." },
+                { icon: <Key size={16} color="#79c0ff" />, title: "Change Password", desc: "Re-wraps the Master Key under a new password without re-encrypting any files. Optional recovery-code rotation." },
+                { icon: <Shield size={16} color="#3fb950" />, title: "Atomic Writes", desc: "Every encrypted file and the .drivelock are written to a .tmp + fsync, then os.replace'd — power-loss safe." },
+                { icon: <FileText size={16} color="#c9b3ff" />, title: "Password Strength Meter", desc: "Live 5-level meter checking length, uppercase, digits, and symbols while you type." },
+                { icon: <Settings size={16} color="#8b949e" />, title: "Persistent Settings", desc: "Toggles for filename obfuscation, secure-wipe, auto-lock-on-eject, and toast notifications stored via QSettings." },
+                { icon: <Shield size={16} color="#388bfd" />, title: "Tray + Toast", desc: "QSystemTrayIcon with native Windows balloon notifications for lock/unlock/error events. Right-click for Lock-All." },
+                { icon: <Play size={16} color="#3fb950" />, title: "PyInstaller Export", desc: "Includes setup.py to build a single standalone DriveGuard.exe with PyInstaller — no Python required on target." },
               ].map((f, i) => (
                 <FeatureCard key={i} icon={f.icon} title={f.title} desc={f.desc} />
               ))}
@@ -557,7 +557,7 @@ export default function App() {
                     </p>
                     <Code>python driveguard.py</Code>
                     <p style={{ color: "#6e7681", fontSize: "11px", margin: "10px 0 0" }}>
-                       Run as Administrator for full access to all drives.
+                      Run as Administrator for full access to all drives.
                     </p>
                   </div>
                 ),
@@ -641,9 +641,9 @@ export default function App() {
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
           <Pill text="Python 3.8+" color="#3fb950" bg="#1a3d2a" />
-          <Pill text="PyQt5"       color="#388bfd" bg="#1f3a5f" />
+          <Pill text="PyQt5" color="#388bfd" bg="#1f3a5f" />
           <Pill text="cryptography" color="#c9b3ff" bg="#2d1b69" />
-          <Pill text="psutil"      color="#d29922" bg="#2d1e00" />
+          <Pill text="psutil" color="#d29922" bg="#2d1e00" />
         </div>
       </div>
 
@@ -720,7 +720,7 @@ function AppPreview() {
         }}>
           <div>
             <div style={{ color: "#f0f6fc", fontSize: "15px", fontWeight: 800, marginBottom: "2px" }}>
-               DriveGuard
+              DriveGuard
             </div>
             <div style={{ color: "#8b949e", fontSize: "10px" }}>AES-256 Encryption</div>
           </div>
@@ -731,9 +731,9 @@ function AppPreview() {
             </div>
             {[
               { l: "Total drives:", v: "0", c: "#8b949e" },
-              { l: "Encrypted:",    v: "0", c: "#da3633" },
-              { l: "Unlocked:",     v: "0", c: "#3fb950" },
-              { l: "Unprotected:",  v: "0", c: "#d29922" },
+              { l: "Encrypted:", v: "0", c: "#da3633" },
+              { l: "Unlocked:", v: "0", c: "#3fb950" },
+              { l: "Unprotected:", v: "0", c: "#d29922" },
             ].map((s, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
                 <span style={{ color: "#6e7681", fontSize: "11px" }}>{s.l}</span>
@@ -775,7 +775,7 @@ function AppPreview() {
               background: "#21262d", border: "1px solid #30363d",
               color: "#484f58", fontSize: "11px", fontWeight: 700, cursor: "not-allowed",
             }}>
-               Lock All
+              Lock All
             </button>
           </div>
 
@@ -788,7 +788,7 @@ function AppPreview() {
             }}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ color: "#f0f6fc", fontSize: "13px", fontWeight: 700 }}>Satbir USB</span>
+                  <span style={{ color: "#f0f6fc", fontSize: "13px", fontWeight: 700 }}>Flash USB</span>
                   <span style={{ color: "#8b949e", fontSize: "11px" }}>(D:) • exFAT</span>
                 </div>
                 <div style={{ color: "#8b949e", fontSize: "11px", marginTop: "2px" }}>
@@ -810,11 +810,11 @@ function AppPreview() {
             display: "flex", alignItems: "center", padding: "0 20px", gap: "8px",
           }}>
             {[
-              { txt: " Lock Drive",      bg: "#3d1a1a", col: "#f85149", brd: "#f85149", flex: 2 },
-              { txt: " Unlock Drive",    bg: "#1a3d2a", col: "#3fb950", brd: "#3fb950", flex: 2 },
-              { txt: " Recovery",        bg: "#2d1e00", col: "#e3b341", brd: "#e3b341", flex: 2 },
+              { txt: " Lock Drive", bg: "#3d1a1a", col: "#f85149", brd: "#f85149", flex: 2 },
+              { txt: " Unlock Drive", bg: "#1a3d2a", col: "#3fb950", brd: "#3fb950", flex: 2 },
+              { txt: " Recovery", bg: "#2d1e00", col: "#e3b341", brd: "#e3b341", flex: 2 },
               { txt: " Change Password", bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 2 },
-              { txt: " Refresh",         bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 1.5 },
+              { txt: " Refresh", bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 1.5 },
             ].map((b, i) => (
               <button key={i} style={{
                 flex: b.flex, padding: "10px", borderRadius: "8px",
@@ -835,7 +835,7 @@ function AppPreview() {
         display: "flex", alignItems: "center", padding: "0 12px",
       }}>
         <span style={{ color: "#cae8ff", fontSize: "10px" }}>
-           DriveGuard v1.2.0 — AES-256-GCM Engine Ready · WM_DEVICECHANGE active
+          DriveGuard v1.2.0 — AES-256-GCM Engine Ready · WM_DEVICECHANGE active
         </span>
       </div>
     </div>
