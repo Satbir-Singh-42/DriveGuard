@@ -5,7 +5,7 @@ A real Windows desktop tool for **AES-256-GCM** encryption of USB / external dri
 This repository contains two things:
 
 1. **The DriveGuard Python application** (`src/app/constants/driveguard_py.ts`) — a single-file PyQt5 program packaged as constants and shipped to the user's browser as a downloadable `.py` plus install scripts.
-2. **The Figma Make / React landing page** (`src/app/App.tsx`) — overview, source viewer, and one-click installer download.
+2. **React landing page** (`src/app/App.tsx`) — overview, source viewer, and one-click installer download.
 
 ---
 
@@ -52,16 +52,15 @@ Or use the bundled `install.bat` / `run.bat`. The download bundle also includes 
 
 ## Landing page (this repo)
 
-Built with React + Vite + Tailwind v4 on top of Figma Make. Entry point is `src/app/App.tsx`.
+Built with React + Vite + Tailwind v4 on top of Website. Entry point is `src/app/App.tsx`.
 
 ```
 src/
   app/
     App.tsx                       # landing page
     constants/driveguard_py.ts    # DriveGuard source bundled as TS template literals
-    components/figma/             # ImageWithFallback helper
   styles/
-    fonts.css  tailwind.css  theme.css
+    tailwind.css  theme.css
 ```
 
 The user lands on the page, reads the overview, optionally browses the source, and downloads a 6-file zip-equivalent (`driveguard.py`, `requirements.txt`, `install.bat`, `run.bat`, `setup.py`, `README.md`).
@@ -70,7 +69,6 @@ The user lands on the page, reads the overview, optionally browses the source, a
 
 ```sh
 pnpm install
-# the Vite dev server is managed by Figma Make — do not start it manually
 ```
 
 ---
