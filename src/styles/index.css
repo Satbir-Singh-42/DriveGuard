@@ -1,2 +1,12 @@
 @import './tailwind.css';
 @import './theme.css';
+
+/* ── Global resets & scrollbar styling (moved from JSX <style> in App.tsx) ── */
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0d1117; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+a { color: #388bfd; }

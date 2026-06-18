@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import JSZip from "jszip";
 import {
   Shield, Download, Terminal, CheckCircle, Lock,
   FileCode, Copy, Eye,
   Cpu, Key, HardDrive, Zap, AlertTriangle, Play,
-  FileText, Settings, RefreshCw,
+  FileText, Settings, RefreshCw, Unlock, KeySquare
 } from "lucide-react";
 import {
   DRIVEGUARD_PY, REQUIREMENTS_TXT, INSTALL_BAT, RUN_BAT, SETUP_PY, README_MD,
@@ -15,8 +15,12 @@ function downloadFile(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/plain" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 // ── Reusable components ───────────────────────────────────────────────────────
@@ -52,12 +56,12 @@ function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: stri
 // ── Brand assets ──────────────────────────────────────────────────────────────
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="dg-grad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#1f6feb"/>
       <stop offset="100%" stop-color="#388bfd"/>
     </linearGradient>
   </defs>
-  <path d="M32 4 L56 14 V32 C56 46 45 56 32 60 C19 56 8 46 8 32 V14 Z" fill="url(#g)"/>
+  <path d="M32 4 L56 14 V32 C56 46 45 56 32 60 C19 56 8 46 8 32 V14 Z" fill="url(#dg-grad)"/>
   <path d="M32 4 L56 14 V32 C56 46 45 56 32 60 C19 56 8 46 8 32 V14 Z" fill="none" stroke="#0d2a52" stroke-width="1.5"/>
   <rect x="22" y="30" width="20" height="16" rx="2" fill="#fff"/>
   <path d="M26 30 V24 a6 6 0 0 1 12 0 V30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
@@ -75,75 +79,36 @@ function Logo({ size = 28 }: { size?: number }) {
   );
 }
 
-function useSEO() {
-  useEffect(() => {
-    const TITLE = "DriveGuard — Real USB Drive Encryption (AES-256-GCM, Recovery Codes)";
-    const DESC = "Open-source Windows tool that encrypts USB pendrives with AES-256-GCM, PBKDF2-SHA256, recovery codes, filename obfuscation and secure wipe. Free, no admin required.";
-    const KW = "USB encryption, pendrive lock, AES-256, BitLocker alternative, Windows Home, recovery code, file encryption, DriveGuard, PyQt5, open source";
-    document.title = TITLE;
+// ── Module-level constants (no re-creation on every render) ──────────────────
+const FILES: Record<string, { content: string; lang: string }> = {
+  "driveguard.py": { content: DRIVEGUARD_PY, lang: "python" },
+  "requirements.txt": { content: REQUIREMENTS_TXT, lang: "text" },
+  "install.bat": { content: INSTALL_BAT, lang: "batch" },
+  "run.bat": { content: RUN_BAT, lang: "batch" },
+  "setup.py": { content: SETUP_PY, lang: "python" },
+  "README.md": { content: README_MD, lang: "markdown" },
+};
 
-    const setMeta = (attr: "name" | "property", k: string, v: string) => {
-      let el = document.head.querySelector(`meta[${attr}="${k}"]`) as HTMLMetaElement | null;
-      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, k); document.head.appendChild(el); }
-      el.content = v;
-    };
-    setMeta("name", "description", DESC);
-    setMeta("name", "keywords", KW);
-    setMeta("name", "author", "DriveGuard Project");
-    setMeta("name", "theme-color", "#0d1117");
-    setMeta("name", "robots", "index,follow");
-    setMeta("property", "og:type", "website");
-    setMeta("property", "og:title", TITLE);
-    setMeta("property", "og:description", DESC);
-    setMeta("property", "og:site_name", "DriveGuard");
-    setMeta("name", "twitter:card", "summary_large_image");
-    setMeta("name", "twitter:title", TITLE);
-    setMeta("name", "twitter:description", DESC);
-
-    const setLink = (rel: string, type: string, href: string) => {
-      let el = document.head.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
-      if (!el) { el = document.createElement("link"); el.rel = rel; document.head.appendChild(el); }
-      if (type) el.type = type;
-      el.href = href;
-    };
-    const faviconHref = "data:image/svg+xml;utf8," + encodeURIComponent(LOGO_SVG);
-    setLink("icon", "image/svg+xml", faviconHref);
-    setLink("apple-touch-icon", "", faviconHref);
-
-    let ld = document.head.querySelector('script[type="application/ld+json"]') as HTMLScriptElement | null;
-    if (!ld) { ld = document.createElement("script"); ld.type = "application/ld+json"; document.head.appendChild(ld); }
-    ld.textContent = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "DriveGuard",
-      "applicationCategory": "SecurityApplication",
-      "operatingSystem": "Windows",
-      "softwareVersion": "1.2.0",
-      "description": DESC,
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    });
-  }, []);
-}
+const TAB_STYLE = (active: boolean) => ({
+  padding: "8px 20px", border: "none", cursor: "pointer",
+  background: active ? "#1c2333" : "transparent",
+  color: active ? "#f0f6fc" : "#8b949e",
+  borderBottom: active ? "2px solid #1f6feb" : "2px solid transparent",
+  fontSize: "13px", fontWeight: 600 as const, transition: "all 0.15s",
+});
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  useSEO();
   const [activeTab, setActiveTab] = useState<"overview" | "code" | "install">("overview");
   const [activeFile, setActiveFile] = useState("driveguard.py");
   const [copied, setCopied] = useState(false);
   const [showFull, setShowFull] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  const files: Record<string, { content: string; lang: string }> = {
-    "driveguard.py": { content: DRIVEGUARD_PY, lang: "python" },
-    "requirements.txt": { content: REQUIREMENTS_TXT, lang: "text" },
-    "install.bat": { content: INSTALL_BAT, lang: "batch" },
-    "run.bat": { content: RUN_BAT, lang: "batch" },
-    "setup.py": { content: SETUP_PY, lang: "python" },
-    "README.md": { content: README_MD, lang: "markdown" },
-  };
-
-  const activeContent = files[activeFile]?.content ?? "";
-  const displayLines = showFull ? activeContent : activeContent.split("\n").slice(0, 60).join("\n");
+  const activeContent = FILES[activeFile]?.content ?? "";
+  // Memoised: avoids re-splitting on every render (was called 3× previously)
+  const contentLines = useMemo(() => activeContent.split("\n"), [activeContent]);
+  const displayLines = showFull ? activeContent : contentLines.slice(0, 60).join("\n");
 
   function copyCode() {
     navigator.clipboard.writeText(activeContent).then(() => {
@@ -152,26 +117,27 @@ export default function App() {
   }
 
   async function downloadAll() {
-    const zip = new JSZip();
-    Object.entries(files).forEach(([name, { content }]) => {
-      zip.file(name, content);
-    });
-    const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "DriveGuard_Package.zip";
-    a.click();
-    URL.revokeObjectURL(url);
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+      Object.entries(FILES).forEach(([name, { content }]) => {
+        zip.file(name, content);
+      });
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "DriveGuard_Package.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Defer revocation so the browser has time to start the download
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } finally {
+      setDownloading(false);
+    }
   }
-
-  const TAB_STYLE = (active: boolean) => ({
-    padding: "8px 20px", border: "none", cursor: "pointer",
-    background: active ? "#1c2333" : "transparent",
-    color: active ? "#f0f6fc" : "#8b949e",
-    borderBottom: active ? "2px solid #1f6feb" : "2px solid transparent",
-    fontSize: "13px", fontWeight: 600 as const, transition: "all 0.15s",
-  });
 
   return (
     <div style={{
@@ -200,18 +166,22 @@ export default function App() {
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
             <button
+              type="button"
               onClick={downloadAll}
+              disabled={downloading}
               style={{
                 padding: "8px 18px", borderRadius: "8px",
                 background: "linear-gradient(135deg, #238636, #2ea043)",
                 border: "none", color: "#fff", fontSize: "13px",
-                fontWeight: 700, cursor: "pointer", display: "flex",
-                alignItems: "center", gap: "6px",
+                fontWeight: 700, cursor: downloading ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: "6px",
+                opacity: downloading ? 0.65 : 1, transition: "opacity 0.2s",
               }}
-              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.opacity = "0.88")}
-              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.opacity = "1")}
+              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (!downloading) e.currentTarget.style.opacity = "0.88"; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (!downloading) e.currentTarget.style.opacity = "1"; }}
             >
-              <Download size={14} /> Download All Files
+              <Download size={14} />
+              {downloading ? "Generating ZIP…" : "Download All Files"}
             </button>
           </div>
         </div>
@@ -259,10 +229,16 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", padding: "0 32px", borderTop: "1px solid #21262d" }}>
+        <div style={{ display: "flex", padding: "0 32px", borderTop: "1px solid #21262d" }} role="tablist">
           {(["overview", "code", "install"] as const).map(tab => (
-            <button key={tab} style={TAB_STYLE(activeTab === tab)}
-              onClick={() => setActiveTab(tab)}>
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              style={TAB_STYLE(activeTab === tab)}
+              onClick={() => setActiveTab(tab)}
+            >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
@@ -380,8 +356,9 @@ export default function App() {
                 padding: "10px 14px", borderBottom: "1px solid #30363d",
                 color: "#8b949e", fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em",
               }}>FILES</div>
-              {Object.entries(files).map(([name]) => (
+              {Object.entries(FILES).map(([name]) => (
                 <button key={name}
+                  type="button"
                   onClick={() => { setActiveFile(name); setShowFull(false); }}
                   style={{
                     width: "100%", padding: "9px 14px", border: "none",
@@ -415,10 +392,11 @@ export default function App() {
                   <FileCode size={14} color="#8b949e" />
                   <span style={{ color: "#f0f6fc", fontSize: "13px", fontWeight: 600 }}>{activeFile}</span>
                   <span style={{ color: "#6e7681", fontSize: "11px" }}>
-                    ({activeContent.split("\n").length} lines)
+                    ({contentLines.length} lines)
                   </span>
                   <div style={{ marginLeft: "auto", display: "flex", gap: "6px" }}>
                     <button
+                      type="button"
                       onClick={copyCode}
                       style={{
                         padding: "5px 10px", borderRadius: "6px",
@@ -432,6 +410,7 @@ export default function App() {
                       {copied ? <><CheckCircle size={11} /> Copied!</> : <><Copy size={11} /> Copy</>}
                     </button>
                     <button
+                      type="button"
                       onClick={() => downloadFile(activeFile, activeContent)}
                       style={{
                         padding: "5px 10px", borderRadius: "6px",
@@ -455,18 +434,17 @@ export default function App() {
                   overflowY: showFull ? "visible" : "hidden",
                 }}>
                   {displayLines}
-                  {!showFull && activeContent.split("\n").length > 60 && (
-                    <div style={{ textAlign: "center", padding: "20px 0 4px", color: "#8b949e", fontSize: "11px" }}>
-                      … {activeContent.split("\n").length - 60} more lines
-                    </div>
-                  )}
                 </pre>
-                {!showFull && activeContent.split("\n").length > 60 && (
+                {!showFull && contentLines.length > 60 && (
                   <div style={{
                     padding: "10px", background: "linear-gradient(0deg, #0d1117, transparent)",
                     borderTop: "1px solid #30363d", textAlign: "center",
                   }}>
+                    <div style={{ color: "#8b949e", fontSize: "11px", marginBottom: "8px" }}>
+                      … {contentLines.length - 60} more lines hidden
+                    </div>
                     <button
+                      type="button"
                       onClick={() => setShowFull(true)}
                       style={{
                         padding: "7px 16px", borderRadius: "6px",
@@ -502,18 +480,22 @@ export default function App() {
                       Click the button below to download the complete package (6 files, including README.md).
                     </p>
                     <button
+                      type="button"
                       onClick={downloadAll}
+                      disabled={downloading}
                       style={{
                         padding: "10px 20px", borderRadius: "8px",
                         background: "linear-gradient(135deg, #238636, #2ea043)",
                         border: "none", color: "#fff", fontSize: "13px",
-                        fontWeight: 700, cursor: "pointer",
+                        fontWeight: 700, cursor: downloading ? "not-allowed" : "pointer",
                         display: "flex", alignItems: "center", gap: "6px",
+                        opacity: downloading ? 0.65 : 1, transition: "opacity 0.2s",
                       }}
-                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.opacity = "0.88")}
-                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.opacity = "1")}
+                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (!downloading) e.currentTarget.style.opacity = "0.88"; }}
+                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (!downloading) e.currentTarget.style.opacity = "1"; }}
                     >
-                      <Download size={14} /> Download All Files
+                      <Download size={14} />
+                      {downloading ? "Generating ZIP…" : "Download All Files"}
                     </button>
                   </div>
                 ),
@@ -607,12 +589,12 @@ export default function App() {
             }}>
               {[
                 { icon: "1.", text: "Plug in your USB drive — DriveGuard detects it instantly via the WM_DEVICECHANGE listener." },
-                { icon: "2.", text: 'Select the drive, then click "Set Password & Encrypt" (new drive) or " Lock Drive" (re-lock an existing one).' },
+                { icon: "2.", text: 'Select the drive, then click "Set Password & Encrypt" (new drive) or "Lock Drive" (re-lock an existing one).' },
                 { icon: "3.", text: "Enter a strong password (live strength meter), confirm, and acknowledge the encryption warning." },
                 { icon: "4.", text: "A 24-char recovery code is shown ONCE — copy it or save to file before continuing. This is your only fallback if you forget the password." },
                 { icon: "5.", text: "DriveGuard encrypts every file in 1 MiB chunks with AES-256-GCM. Filenames are obfuscated and originals secure-wiped if those settings are on." },
-                { icon: "6.", text: 'To unlock, click " Unlock Drive" and enter the password. To rotate it, use " Change Password" — files are not re-encrypted, only the wrapped key is.' },
-                { icon: "7.", text: 'Forgot password? Click " Recovery", enter the 24-char code, and you can optionally set a new password (which auto-rotates the recovery code).' },
+                { icon: "6.", text: 'To unlock, click "Unlock Drive" and enter the password. To rotate it, use "Change Password" — files are not re-encrypted, only the wrapped key is.' },
+                { icon: "7.", text: 'Forgot password? Click "Recovery", enter the 24-char code, and you can optionally set a new password (which auto-rotates the recovery code).' },
               ].map((s, i) => (
                 <div key={i} style={{ display: "flex", gap: "12px", marginBottom: i < 6 ? "12px" : 0 }}>
                   <span style={{
@@ -640,21 +622,13 @@ export default function App() {
           </span>
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
-          <Pill text="Python 3.8+" color="#3fb950" bg="#1a3d2a" />
+          <Pill text="Python 3.10+" color="#3fb950" bg="#1a3d2a" />
           <Pill text="PyQt5" color="#388bfd" bg="#1f3a5f" />
           <Pill text="cryptography" color="#c9b3ff" bg="#2d1b69" />
           <Pill text="psutil" color="#d29922" bg="#2d1e00" />
         </div>
       </div>
 
-      <style>{`
-        * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0d1117; }
-        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
-        a { color: #388bfd; }
-      `}</style>
     </div>
   );
 }
@@ -770,7 +744,7 @@ function AppPreview() {
             <span style={{ color: "#f0f6fc", fontSize: "13px", fontWeight: 700 }}>
               Connected Storage Devices
             </span>
-            <button disabled style={{
+            <button type="button" disabled style={{
               padding: "5px 10px", borderRadius: "6px",
               background: "#21262d", border: "1px solid #30363d",
               color: "#484f58", fontSize: "11px", fontWeight: 700, cursor: "not-allowed",
@@ -810,13 +784,13 @@ function AppPreview() {
             display: "flex", alignItems: "center", padding: "0 20px", gap: "8px",
           }}>
             {[
-              { txt: " Lock Drive", bg: "#3d1a1a", col: "#f85149", brd: "#f85149", flex: 2 },
-              { txt: " Unlock Drive", bg: "#1a3d2a", col: "#3fb950", brd: "#3fb950", flex: 2 },
-              { txt: " Recovery", bg: "#2d1e00", col: "#e3b341", brd: "#e3b341", flex: 2 },
-              { txt: " Change Password", bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 2 },
-              { txt: " Refresh", bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 1.5 },
+              { txt: "Lock Drive", icon: <Lock size={12} />, bg: "#3d1a1a", col: "#f85149", brd: "#f85149", flex: 2 },
+              { txt: "Unlock Drive", icon: <Unlock size={12} />, bg: "#1a3d2a", col: "#3fb950", brd: "#3fb950", flex: 2 },
+              { txt: "Recovery", icon: <Key size={12} />, bg: "#2d1e00", col: "#e3b341", brd: "#e3b341", flex: 2 },
+              { txt: "Change Password", icon: <KeySquare size={12} />, bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 2 },
+              { txt: "Refresh", icon: <RefreshCw size={12} />, bg: "#21262d", col: "#8b949e", brd: "#30363d", flex: 1.5 },
             ].map((b, i) => (
-              <button key={i} style={{
+              <button key={i} type="button" style={{
                 flex: b.flex, padding: "10px", borderRadius: "8px",
                 background: b.bg, border: `1px solid ${b.brd}`,
                 color: b.col, fontSize: "12px", fontWeight: 700, cursor: "pointer",

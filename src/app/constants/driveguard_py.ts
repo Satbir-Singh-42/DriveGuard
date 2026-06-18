@@ -162,7 +162,7 @@ class Engine:
         return "".join(c for c in code.upper() if c.isalnum())
 
     @staticmethod
-    def make_metadata(password: str) -> Tuple[dict, str]:
+    def make_metadata(password: str, mode: str = "vault") -> Tuple[dict, str]:
         mk        = secrets.token_bytes(KEY_BYTES)
         salt_pwd  = secrets.token_bytes(SALT_BYTES)
         salt_rec  = secrets.token_bytes(SALT_BYTES)
@@ -171,6 +171,7 @@ class Engine:
         kek_rec   = Engine._pbkdf2(Engine.normalize_recovery_code(rec_code), salt_rec)
         meta = {
             "app":APP_NAME, "version":APP_VERSION, "format":FORMAT_VERSION,
+            "mode": mode,
             "algorithm":"AES-256-GCM", "kdf":"PBKDF2-HMAC-SHA256",
             "iterations":KDF_ITERS, "chunk_size":CHUNK_SIZE,
             "salt_pwd":   base64.b64encode(salt_pwd).decode(),
@@ -249,11 +250,13 @@ class Engine:
                 try: os.fsync(out.fileno())
                 except OSError: pass
             os.replace(tmp, dst)
+            # BUG-FIX: verify destination BEFORE deleting the source
             try:
                 if not dst.exists() or dst.stat().st_size == 0:
                     raise OSError("destination missing or empty after rename")
             except OSError:
-                return False
+                return False  # leave original intact
+            # Only delete/wipe source once we are sure the encrypted file is on disk
             if wipe:
                 secure_wipe(path)
             else:
@@ -268,6 +271,7 @@ class Engine:
 
     @staticmethod
     def decrypt_file(path: Path, key: bytes) -> bool:
+        tmp: Optional[Path] = None
         try:
             aes = AESGCM(key)
             with open(path, "rb") as src:
@@ -277,7 +281,11 @@ class Engine:
                 cs_b = src.read(4)
                 if len(cs_b) != 4: return False
                 cs = struct.unpack("<I", cs_b)[0]
+                # Sanity-check chunk size: must be between 64 KiB and 16 MiB
+                if not (65536 <= cs <= 16 * 1024 * 1024):
+                    return False
                 name_nonce = src.read(NONCE_BYTES)
+                if len(name_nonce) != NONCE_BYTES: return False
                 nl_b = src.read(2)
                 if len(nl_b) != 2: return False
                 name_len = struct.unpack("<H", nl_b)[0]
@@ -299,26 +307,29 @@ class Engine:
                         dst = path.parent / f"{base} ({i}){suffix}"; i += 1
 
                 tmp = dst.with_suffix(dst.suffix + ".part")
-                ct_size = cs + 16
+                ct_size = cs + 16  # chunk plaintext + GCM tag
                 with open(tmp, "wb") as out:
                     while True:
                         nonce = src.read(NONCE_BYTES)
-                        if not nonce: break
+                        if not nonce: break   # clean EOF
                         if len(nonce) != NONCE_BYTES: return False
                         ct = src.read(ct_size)
-                        if not ct: return False
+                        if len(ct) < 16: return False # Must at least have a GCM tag
                         out.write(aes.decrypt(nonce, ct, b"DG-DATA"))
                     out.flush()
                     try: os.fsync(out.fileno())
                     except OSError: pass
+            # Close both src and out before os.replace (important on Windows)
             os.replace(tmp, dst)
+            tmp = None  # ownership transferred
             try: path.unlink()
             except OSError: pass
             return True
         except Exception:
-            try:
-                if 'tmp' in locals() and tmp.exists(): tmp.unlink()  # type: ignore
-            except OSError: pass
+            if tmp is not None:
+                try:
+                    if tmp.exists(): tmp.unlink()
+                except OSError: pass
             return False
 
 
@@ -419,6 +430,14 @@ class Scanner:
     @staticmethod
     def _is_locked_fast(mp: str, protected: bool) -> bool:
         if not protected: return False
+        
+        vault = Path(mp) / "DriveGuard_Vault"
+        if vault.exists():
+            try:
+                for root, _, files in os.walk(vault):
+                    if any(f.endswith(ENC_EXT) for f in files): return True
+            except OSError: pass
+
         try:
             with os.scandir(mp) as it:
                 for entry in it:
@@ -426,7 +445,7 @@ class Scanner:
                         return True
             with os.scandir(mp) as it2:
                 for entry in it2:
-                    if entry.is_dir() and entry.name not in SKIP_DIRS:
+                    if entry.is_dir() and entry.name not in SKIP_DIRS and entry.name != "DriveGuard_Vault":
                         try:
                             with os.scandir(entry.path) as it3:
                                 for sub in it3:
@@ -484,10 +503,15 @@ class CryptoWorker(QThread):
             if job is None: return
             mp, key, mode, opts = job
             try:
+                target_dir = str(Path(mp) / "DriveGuard_Vault") if opts.get("mode") == "vault" else mp
+                if opts.get("mode") == "vault":
+                    try: os.makedirs(target_dir, exist_ok=True)
+                    except OSError: pass
+
                 if mode == "lock":
-                    files, verb = Scanner.plaintext_files(mp), "Encrypting"
+                    files, verb = Scanner.plaintext_files(target_dir), "Encrypting"
                 else:
-                    files, verb = Scanner.encrypted_files(mp), "Decrypting"
+                    files, verb = Scanner.encrypted_files(target_dir), "Decrypting"
                 n = len(files)
                 if n == 0:
                     self.job_done.emit(True, "No files to process.", mp); continue
@@ -839,10 +863,13 @@ class MainWindow(QMainWindow):
         self.cb_obf   = QCheckBox("Obfuscate filenames")
         self.cb_obf.setChecked(self.settings.value("obfuscate", True, bool))
         self.cb_obf.toggled.connect(lambda v: self.settings.setValue("obfuscate", v))
+        self.cb_vault = QCheckBox("Vault Mode (Folder only)")
+        self.cb_vault.setChecked(self.settings.value("vault_mode", True, bool))
+        self.cb_vault.toggled.connect(self._on_vault_toggled)
         self.cb_wipe  = QCheckBox("Secure-wipe originals")
         self.cb_wipe.setChecked(self.settings.value("wipe", False, bool))
         self.cb_wipe.toggled.connect(lambda v: self.settings.setValue("wipe", v))
-        for c in (self.cb_eject, self.cb_toast, self.cb_obf, self.cb_wipe):
+        for c in (self.cb_vault, self.cb_eject, self.cb_toast, self.cb_obf, self.cb_wipe):
             c.setStyleSheet(f"color:{C['muted']};font-size:11px;")
             setL.addWidget(c)
         sl.addWidget(setF)
@@ -874,6 +901,7 @@ class MainWindow(QMainWindow):
         pl = QVBoxLayout(self.pframe); pl.setContentsMargins(20,8,20,8); pl.setSpacing(4)
         self.plbl = QLabel("Working…"); self.plbl.setStyleSheet(f"color:{C['muted']};font-size:11px;")
         self.pbar = QProgressBar(); self.pbar.setObjectName("pbar"); self.pbar.setFixedHeight(12)
+        self.pbar.setTextVisible(False)
         pl.addWidget(self.plbl); pl.addWidget(self.pbar)
         self.pframe.hide(); ml.addWidget(self.pframe)
 
@@ -981,6 +1009,17 @@ class MainWindow(QMainWindow):
                 "err":QSystemTrayIcon.Critical}.get(level, QSystemTrayIcon.Information)
         self.tray.showMessage(title, message, icon, 4000)
 
+    def _on_vault_toggled(self, checked: bool):
+        self.settings.setValue("vault_mode", checked)
+        d = self.current
+        if d and d["protected"] and not d["locked"]:
+            meta = self._load_meta(d["mountpoint"])
+            if meta:
+                meta["mode"] = "vault" if checked else "full"
+                write_lockfile(d["mountpoint"], meta)
+                self._toast("Mode Changed", f"Drive is now in {'Vault' if checked else 'Full Drive'} mode.")
+                self._sel(self.lst.currentRow())
+
     # ── Refresh & auto-lock-on-eject ──────────────────────────────────────────
     def refresh(self):
         new_drives = Scanner.get_drives()
@@ -1025,8 +1064,28 @@ class MainWindow(QMainWindow):
         self.btn_repair.setEnabled(ok)
         if ok and d and not d["protected"]:
             self.btn_lock.setText("  Set Password & Encrypt")
+            self.btn_unlock.setText("  Unlock Drive")
+            self.cb_vault.blockSignals(True)
+            self.cb_vault.setChecked(self.settings.value("vault_mode", True, bool))
+            self.cb_vault.setEnabled(True)
+            self.cb_vault.blockSignals(False)
+        elif ok and d:
+            meta = self._load_meta(d["mountpoint"], silent=True)
+            mode = meta.get("mode", "full") if meta else "full"
+            t = "Vault" if mode == "vault" else "Drive"
+            self.btn_lock.setText(f"  Lock {t}")
+            self.btn_unlock.setText(f"  Unlock {t}")
+            self.cb_vault.blockSignals(True)
+            self.cb_vault.setChecked(mode == "vault")
+            self.cb_vault.setEnabled(not d["locked"])
+            self.cb_vault.blockSignals(False)
         else:
             self.btn_lock.setText("  Lock Drive")
+            self.btn_unlock.setText("  Unlock Drive")
+            self.cb_vault.blockSignals(True)
+            self.cb_vault.setChecked(self.settings.value("vault_mode", True, bool))
+            self.cb_vault.setEnabled(True)
+            self.cb_vault.blockSignals(False)
 
     def _opts(self) -> dict:
         return {"obfuscate": self.settings.value("obfuscate", True, bool),
@@ -1037,43 +1096,71 @@ class MainWindow(QMainWindow):
         d = self.current
         if not d: return
         mp = d["mountpoint"]; lk = Path(mp) / LOCK_FILENAME
+        
+        # EXISTING DRIVE
         if d["protected"] and lk.exists():
             try: meta = json.loads(lk.read_text(encoding="utf-8"))
             except Exception:
                 QMessageBox.critical(self,"Error","Lock file is corrupt."); return
-            dlg = PwdDialog(self,"enter",f"{d['label']} ({d['letter']})")
+            
+            target_dir = str(Path(mp) / "DriveGuard_Vault") if meta.get("mode") == "vault" else mp
+            if meta.get("mode") == "vault":
+                try: os.makedirs(target_dir, exist_ok=True)
+                except OSError: pass
+            
+            files = Scanner.plaintext_files(target_dir)
+            if not files:
+                QMessageBox.information(self,"Nothing to Encrypt", f"No plaintext files found in {'DriveGuard_Vault' if meta.get('mode') == 'vault' else 'drive'}."); return
+
+            t_str = f"Vault on {d['label']} ({d['letter']})" if meta.get("mode") == "vault" else f"{d['label']} ({d['letter']})"
+            dlg = PwdDialog(self,"enter", t_str)
             if dlg.exec_() != QDialog.Accepted or not dlg.password: return
             mk = Engine.unlock_with_password(meta, dlg.password)
             if mk is None:
                 QMessageBox.critical(self,"Wrong Password","  Incorrect password."); return
-            self._enqueue(mp, mk, "lock", d['label'])
+            self._enqueue(mp, mk, "lock", d['label'], meta)
             return
 
-        files = Scanner.plaintext_files(mp)
-        if not files:
+        # NEW DRIVE
+        mode = "vault" if self.cb_vault.isChecked() else "full"
+        
+        target_dir = str(Path(mp) / "DriveGuard_Vault") if mode == "vault" else mp
+        if mode == "vault":
+            try: os.makedirs(target_dir, exist_ok=True)
+            except OSError: pass
+
+        files = Scanner.plaintext_files(target_dir)
+        if not files and mode == "full":
             QMessageBox.information(self,"Nothing to Encrypt","No files found."); return
+
         opts = self._opts()
         extras = []
         if opts["obfuscate"]: extras.append("• Filenames will be obfuscated")
         if opts["wipe"]:      extras.append("• Originals will be SECURELY WIPED before delete")
-        extra_txt = ("\\n\\n" + "\\n".join(extras)) if extras else ""
-        ans = QMessageBox.warning(self,"Confirm Encryption",
-            f"  Encrypt all files on:\\n\\n   {d['label']}  ({d['letter']})\\n\\n"
-            f"   {len(files)} file(s) → AES-256-GCM"
-            f"{extra_txt}\\n\\n"
-            f"You'll get a recovery code in case you forget the password.\\nContinue?",
+        extra_txt = ("\n\n" + "\n".join(extras)) if extras else ""
+        
+        msg = f"  Encrypt all files on:\n\n   {d['label']}  ({d['letter']})\n\n   {len(files)} file(s) → AES-256-GCM"
+        if mode == "vault":
+            if not files:
+                msg = f"  Setup Vault on:\n\n   {d['label']}  ({d['letter']})\n\n   DriveGuard_Vault folder created! You can move files into it later."
+            else:
+                msg = f"  Encrypt Vault on:\n\n   {d['label']}  ({d['letter']})\n\n   {len(files)} file(s) in DriveGuard_Vault → AES-256-GCM"
+        
+        ans2 = QMessageBox.warning(self,"Confirm Encryption",
+            f"{msg}{extra_txt}\n\nYou'll get a recovery code in case you forget the password.\nContinue?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if ans != QMessageBox.Yes: return
+        if ans2 != QMessageBox.Yes: return
 
-        dlg = PwdDialog(self,"set",f"{d['label']} ({d['letter']})")
+        t_str = f"Vault on {d['label']} ({d['letter']})" if mode == "vault" else f"{d['label']} ({d['letter']})"
+        dlg = PwdDialog(self,"set", t_str)
         if dlg.exec_() != QDialog.Accepted or not dlg.password: return
-        meta, recovery_code = Engine.make_metadata(dlg.password)
+        meta, recovery_code = Engine.make_metadata(dlg.password, mode=mode)
         write_lockfile(mp, meta)
         RecoveryShowDialog(self, recovery_code, d['label']).exec_()
         mk = Engine.unlock_with_password(meta, dlg.password)
         if mk is None:
             QMessageBox.critical(self,"Internal Error","Key derivation failed."); return
-        self._enqueue(mp, mk, "lock", d['label'])
+        self._enqueue(mp, mk, "lock", d['label'], meta)
 
     # ── Unlock ────────────────────────────────────────────────────────────────
     def unlock_drive(self):
@@ -1081,13 +1168,14 @@ class MainWindow(QMainWindow):
         if not d: return
         meta = self._load_meta(d["mountpoint"])
         if meta is None: return
-        dlg = PwdDialog(self,"enter",f"{d['label']} ({d['letter']})")
+        t_str = f"Vault on {d['label']} ({d['letter']})" if meta.get("mode") == "vault" else f"{d['label']} ({d['letter']})"
+        dlg = PwdDialog(self,"enter", t_str)
         if dlg.exec_() != QDialog.Accepted or not dlg.password: return
         mk = Engine.unlock_with_password(meta, dlg.password)
         if mk is None:
             QMessageBox.critical(self,"Wrong Password",
-                "  Incorrect password.\\n\\nForgot it? Use  Recovery."); return
-        self._enqueue(d["mountpoint"], mk, "unlock", d['label'])
+                "  Incorrect password.\n\nForgot it? Use  Recovery."); return
+        self._enqueue(d["mountpoint"], mk, "unlock", d['label'], meta)
 
     def recovery_unlock(self):
         d = self.current
@@ -1096,7 +1184,8 @@ class MainWindow(QMainWindow):
         if meta is None: return
         if "wrapped_rec" not in meta:
             QMessageBox.warning(self,"No Recovery","Drive has no recovery code."); return
-        dlg = RecoveryUseDialog(self, f"{d['label']} ({d['letter']})")
+        t_str = f"Vault on {d['label']} ({d['letter']})" if meta.get("mode") == "vault" else f"{d['label']} ({d['letter']})"
+        dlg = RecoveryUseDialog(self, t_str)
         if dlg.exec_() != QDialog.Accepted or not dlg.code: return
         mk = Engine.unlock_with_recovery(meta, dlg.code)
         if mk is None:
@@ -1105,20 +1194,21 @@ class MainWindow(QMainWindow):
             "Drive will be unlocked.\\nWould you like to set a NEW password now?",
             QMessageBox.Yes | QMessageBox.No)
         if ans == QMessageBox.Yes:
-            pw = PwdDialog(self,"set",f"{d['label']} ({d['letter']})")
+            pw = PwdDialog(self,"set", t_str)
             if pw.exec_() == QDialog.Accepted and pw.password:
                 meta = Engine.rewrap_password(meta, mk, pw.password)
                 meta, new_code = Engine.rewrap_recovery(meta, mk)
                 write_lockfile(d["mountpoint"], meta)
                 RecoveryShowDialog(self, new_code, d['label']).exec_()
-        self._enqueue(d["mountpoint"], mk, "unlock", d['label'])
+        self._enqueue(d["mountpoint"], mk, "unlock", d['label'], meta)
 
     def change_password(self):
         d = self.current
         if not d: return
         meta = self._load_meta(d["mountpoint"])
         if meta is None: return
-        dlg = PwdDialog(self,"change",f"{d['label']} ({d['letter']})")
+        t_str = f"Vault on {d['label']} ({d['letter']})" if meta.get("mode") == "vault" else f"{d['label']} ({d['letter']})"
+        dlg = PwdDialog(self,"change", t_str)
         if dlg.exec_() != QDialog.Accepted: return
         mk = Engine.unlock_with_password(meta, dlg.old_password or "")
         if mk is None:
@@ -1182,14 +1272,16 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.information(self,"Repair", msg)
 
-    def _load_meta(self, mp: str) -> Optional[dict]:
+    def _load_meta(self, mp: str, silent: bool = False) -> Optional[dict]:
         lk = Path(mp) / LOCK_FILENAME
         if not lk.exists():
-            QMessageBox.warning(self,"No Lock File","Drive has no DriveGuard lock file."); return None
+            if not silent: QMessageBox.warning(self,"No Lock File","Drive has no DriveGuard lock file.")
+            return None
         try:
             return json.loads(lk.read_text(encoding="utf-8"))
         except Exception:
-            QMessageBox.critical(self,"Error","Lock file is corrupt."); return None
+            if not silent: QMessageBox.critical(self,"Error","Lock file is corrupt.")
+            return None
 
     def lock_all(self):
         cands = [d for d in self.drives if d["protected"] and not d["locked"]]
@@ -1202,18 +1294,22 @@ class MainWindow(QMainWindow):
         for drv in cands:
             meta = self._load_meta(drv["mountpoint"])
             if meta is None: continue
-            dlg = PwdDialog(self,"enter",f"{drv['label']} ({drv['letter']})")
+            t_str = f"Vault on {drv['label']} ({drv['letter']})" if meta.get("mode") == "vault" else f"{drv['label']} ({drv['letter']})"
+            dlg = PwdDialog(self,"enter", t_str)
             if dlg.exec_() != QDialog.Accepted or not dlg.password: continue
             mk = Engine.unlock_with_password(meta, dlg.password)
             if mk is None:
                 QMessageBox.warning(self,"Skipped",f"Wrong password for {drv['label']}."); continue
-            self._enqueue(drv["mountpoint"], mk, "lock", drv['label'])
+            self._enqueue(drv["mountpoint"], mk, "lock", drv['label'], meta)
 
-    def _enqueue(self, mp: str, key: bytes, mode: str, label: str):
+    def _enqueue(self, mp: str, key: bytes, action: str, label: str, meta: dict):
+        m_str = "Vault" if meta.get("mode") == "vault" else "Drive"
         self.pframe.show(); self.pbar.setValue(0)
-        self.plbl.setText(f"Queued {mode}: {label} — do NOT remove drive!")
-        self.statusBar().showMessage(f"  Queued {mode} → {mp}")
-        self.worker.enqueue(mp, key, mode, self._opts())
+        self.plbl.setText(f"Queued {action}: {label} ({m_str}) — do NOT remove drive!")
+        self.statusBar().showMessage(f"  Queued {action} {m_str} → {mp}")
+        opts = self._opts()
+        opts["mode"] = meta.get("mode", "full")
+        self.worker.enqueue(mp, key, action, opts)
 
     def _on_progress(self, pct, txt):
         self.pbar.setValue(pct); self.plbl.setText(txt)
@@ -1251,8 +1347,7 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    main()
-`;
+    main()`;
 
 export const REQUIREMENTS_TXT = `# DriveGuard v1.2 Requirements
 # Install with: pip install -r requirements.txt
