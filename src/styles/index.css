@@ -4,6 +4,12 @@
 /* ── Global resets & scrollbar styling (moved from JSX <style> in App.tsx) ── */
 * { box-sizing: border-box; }
 
+body {
+  margin: 0;
+  background-color: #0d1117;
+  color: #f0f6fc;
+}
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #0d1117; }
 ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }

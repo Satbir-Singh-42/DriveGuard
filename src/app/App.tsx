@@ -207,6 +207,19 @@ export default function App() {
             <strong style={{ color: "#f0f6fc" }}>PBKDF2-HMAC-SHA256</strong> key derivation.
             No BitLocker. No VeraCrypt. Just Python + cryptography.
           </p>
+
+          <div style={{ marginBottom: "24px" }}>
+            <a href="https://www.producthunt.com/products/driveguard?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-driveguard" target="_blank" rel="noopener noreferrer">
+              <img 
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1174891&theme=dark&t=1781762717231" 
+                alt="DriveGuard - Real AES-256-GCM USB drive encryption for Windows. | Product Hunt" 
+                style={{ width: "250px", height: "54px" }} 
+                width="250" 
+                height="54" 
+              />
+            </a>
+          </div>
+
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             {[
               { icon: <Key size={12} />, text: "AES-256-GCM Auth Encryption" },
@@ -251,7 +264,7 @@ export default function App() {
           {/* HOW IT WORKS */}
           <div style={{ marginBottom: "36px" }}>
             <SectionTitle icon={<Key size={15} color="#8b949e" />} title="How the Encryption Works" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "12px", marginTop: "14px" }}>
               <FeatureCard
                 icon={<Key size={18} color="#388bfd" />}
                 title="Master-Key Model"
@@ -288,7 +301,7 @@ export default function App() {
           {/* FEATURES */}
           <div style={{ marginBottom: "36px" }}>
             <SectionTitle icon={<Zap size={15} color="#8b949e" />} title="Application Features" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginTop: "14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px", marginTop: "14px" }}>
               {[
                 { icon: <HardDrive size={16} color="#388bfd" />, title: "Instant Drive Detection", desc: "Native WM_DEVICECHANGE handler reacts in ~150 ms when you plug or eject a drive. 8-second poll as a fallback." },
                 { icon: <Lock size={16} color="#da3633" />, title: "Streaming Lock/Unlock", desc: "Files are processed in 1 MiB chunks with independent nonces — multi-GB files use constant memory." },
@@ -378,7 +391,7 @@ export default function App() {
             </div>
 
             {/* Code pane */}
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
                 background: "#161b22", border: "1px solid #30363d",
                 borderRadius: "10px", overflow: "hidden",
